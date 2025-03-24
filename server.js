@@ -69,6 +69,33 @@ async function extractKeywords(text) {
   }
 }
 
+// Función para validar si un número es parte de la secuencia de párrafos
+function isValidParagraphNumber(number, previousNumber) {
+  return number === previousNumber + 1;
+}
+
+// Función para obtener todos los números de párrafos del texto
+function getAllParagraphNumbers(text) {
+  const paragraphs = text.split('\n');
+  const paragraphNumbers = [];
+  let currentValidNumber = 0;
+  
+  paragraphs.forEach((line) => {
+    const trimmedLine = line.trim();
+    const match = trimmedLine.match(/^(\d+)\.\s/);
+    
+    if (match) {
+      const number = parseInt(match[1]);
+      if (isValidParagraphNumber(number, currentValidNumber)) {
+        paragraphNumbers.push(number);
+        currentValidNumber = number;
+      }
+    }
+  });
+  
+  return paragraphNumbers;
+}
+
 // Ruta para procesar el PDF y obtener su texto
 app.post('/process-pdf', async (req, res) => {
   if (!req.files || !req.files.pdf) {
@@ -130,6 +157,28 @@ app.post('/save-edited-text', (req, res) => {
   res.json({ success: true, message: 'Text edited successfully' });
 });
 
+// Función para crear el índice de palabras clave
+function createKeywordIndex(paragraphs) {
+  const keywordIndex = {};
+  
+  paragraphs.forEach(paragraph => {
+    paragraph.keywords.forEach(keyword => {
+      if (!keywordIndex[keyword]) {
+        keywordIndex[keyword] = {
+          keyword: keyword,
+          paragraphs: []
+        };
+      }
+      keywordIndex[keyword].paragraphs.push({
+        number: paragraph.number,
+        text: paragraph.text.substring(0, 100) + '...' // Añadimos una vista previa del párrafo
+      });
+    });
+  });
+
+  return Object.values(keywordIndex);
+}
+
 // Ruta para extraer párrafos del texto editado con análisis completo
 app.post('/extract-from-edited', async (req, res) => {
   const { pdfId, paragraphNumbers } = req.body;
@@ -143,18 +192,18 @@ app.post('/extract-from-edited', async (req, res) => {
     return res.status(404).send('PDF not found');
   }
 
-  // Parsea paragraphNumbers desde JSON
-  let paragraphNumbersArray;
   try {
-    paragraphNumbersArray = JSON.parse(paragraphNumbers);
-    if (!Array.isArray(paragraphNumbersArray)) {
-      return res.status(400).send('paragraphNumbers must be an array.');
+    // Parsea paragraphNumbers desde JSON
+    let paragraphNumbersArray;
+    try {
+      paragraphNumbersArray = JSON.parse(paragraphNumbers);
+      if (!Array.isArray(paragraphNumbersArray)) {
+        return res.status(400).send('paragraphNumbers must be an array.');
+      }
+    } catch (error) {
+      return res.status(400).send('Invalid paragraphNumbers format.');
     }
-  } catch (error) {
-    return res.status(400).send('Invalid paragraphNumbers format.');
-  }
 
-  try {
     // Usa el texto editado para extraer los párrafos
     const editedText = pdfData[pdfId].editedText;
     const extractedParagraphs = extractParagraphsFromText(editedText, paragraphNumbersArray);
@@ -170,8 +219,55 @@ app.post('/extract-from-edited', async (req, res) => {
         keywords: analysis.keywords
       });
     }
+
+    // Crear el índice de palabras clave
+    const keywordIndex = createKeywordIndex(paragraphsWithAnalysis);
     
-    res.json({ extractedParagraphs: paragraphsWithAnalysis });
+    res.json({ 
+      extractedParagraphs: paragraphsWithAnalysis,
+      keywordIndex: keywordIndex
+    });
+  } catch (error) {
+    console.error('Error extracting paragraphs:', error);
+    res.status(500).send('Error extracting paragraphs');
+  }
+});
+
+// Ruta para extraer todos los párrafos
+app.post('/extract-all-paragraphs', async (req, res) => {
+  const { pdfId } = req.body;
+  
+  if (!pdfId) {
+    return res.status(400).send('Missing required fields');
+  }
+
+  if (!pdfData[pdfId]) {
+    return res.status(404).send('PDF not found');
+  }
+
+  try {
+    const editedText = pdfData[pdfId].editedText;
+    const allParagraphNumbers = getAllParagraphNumbers(editedText);
+    const extractedParagraphs = extractParagraphsFromText(editedText, allParagraphNumbers);
+    
+    const paragraphsWithAnalysis = [];
+    
+    for (const paragraph of extractedParagraphs) {
+      const analysis = await extractKeywords(paragraph.text);
+      paragraphsWithAnalysis.push({
+        ...paragraph,
+        aiAnalysis: analysis.fullResponse,
+        keywords: analysis.keywords
+      });
+    }
+
+    // Crear el índice de palabras clave
+    const keywordIndex = createKeywordIndex(paragraphsWithAnalysis);
+    
+    res.json({ 
+      extractedParagraphs: paragraphsWithAnalysis,
+      keywordIndex: keywordIndex
+    });
   } catch (error) {
     console.error('Error extracting paragraphs:', error);
     res.status(500).send('Error extracting paragraphs');
