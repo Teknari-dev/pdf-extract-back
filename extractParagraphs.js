@@ -44,25 +44,53 @@ function isLineContinuation(line) {
   // - Comienza con minúscula
   // - O comienza con "otra" u "otras" (casos comunes en continuaciones)
   // - O es un inciso (a), b), c), etc.)
+  // - O comienza con una palabra que parece ser continuación (y, o, u, pero, sin embargo, etc.)
   return /^[a-z]/.test(line) || 
          /^otra/.test(line) || 
          /^[a-z]\)/.test(line) ||
-         /^[A-Z][a-z]+ (de|en|con|y|o|u|las|los|del)/.test(line); // Palabras de conexión comunes
+         /^[A-Z][a-z]+ (de|en|con|y|o|u|las|los|del|pero|sin|aunque|por|que|cuando|si|mientras|además|también|así|como|pues|porque|aunque|a pesar|no obstante|sin embargo)/.test(line);
 }
 
 // Nueva función para extraer de texto
 function extractParagraphsFromText(text, paragraphNumbers) {
-  // Primero limpiamos el texto completo de elementos no deseados
+  // Primero eliminamos los bloques de notas al pie
   const cleanedText = text
+    .split('\n')
+    .reduce((acc, line, index, array) => {
+      const currentLine = line.trim();
+      
+      // Si encontramos una línea separadora, buscamos hasta donde termina el bloque de notas
+      if (currentLine.includes('__________________')) {
+        let skipUntil = index;
+        
+        // Buscamos el final del bloque (número de página o siguiente párrafo numerado)
+        for (let i = index + 1; i < array.length; i++) {
+          const nextLine = array[i].trim();
+          if (nextLine.match(/^-\d+-$/) || // Número de página
+              (nextLine.match(/^\d+\.\s/) && !nextLine.match(/^\d+\s+[A-Z]/))) { // Siguiente párrafo numerado
+            skipUntil = i;
+            break;
+          }
+        }
+        
+        // Marcamos todas las líneas del bloque para ser eliminadas
+        for (let i = index; i <= skipUntil; i++) {
+          array[i] = '';
+        }
+        return acc;
+      }
+      
+      return acc + (currentLine && !currentLine.includes('_') ? '\n' + line : '');
+    }, '')
     .split('\n')
     .filter(line => {
       const trimmedLine = line.trim();
-      // Eliminar líneas que:
       return !(
-        trimmedLine.includes('__________________') || // Líneas separadoras
         /^-\d+-$/.test(trimmedLine) || // Números de página (ej: -4-)
-        /^\(\w+\)$/.test(trimmedLine) || // Marcadores de formato (ej: (S))
-        /^\d{2}-\d{5}/.test(trimmedLine) // Códigos de documento
+        /^\d{2}-\d{5}/.test(trimmedLine) || // Códigos de documento
+        /^\(\w+\)$/.test(trimmedLine) || // Marcadores de formato
+        trimmedLine.includes('_') || // Líneas con guiones bajos
+        trimmedLine === '' // Líneas vacías
       );
     })
     .join('\n');
@@ -95,64 +123,26 @@ function extractParagraphsFromText(text, paragraphNumbers) {
 
       let paragraph = paragraphs[startIndex].trim();
       let nextParagraphFound = false;
-      let lastLineWasFootnote = false;
 
       for (let i = startIndex + 1; i < paragraphs.length && !nextParagraphFound; i++) {
         const currentLine = paragraphs[i].trim();
         
-        if (currentLine === '') continue;
-
-        // Detectar si es una nota al pie
-        const isFootnote = /^\d+\s+[A-Z][a-z]/.test(currentLine) && 
-                          !currentLine.includes('migratorias') &&
-                          !currentLine.includes('trabajadoras');
-        
-        if (isFootnote) {
-          lastLineWasFootnote = true;
-          continue;
-        }
-
-        // Detener si encontramos el siguiente número válido de párrafo
+        // Solo detenemos si encontramos el siguiente número válido de párrafo
         if (currentLine.match(/^\d+\.\s/) && validParagraphNumbers.has(parseInt(currentLine))) {
           nextParagraphFound = true;
           continue;
         }
 
-        // Si la línea anterior era una nota al pie y esta línea no parece ser continuación,
-        // consideramos que el párrafo ha terminado
-        if (lastLineWasFootnote && !isLineContinuation(currentLine)) {
-          nextParagraphFound = true;
-          continue;
+        // Incluimos todas las líneas que no estén vacías
+        if (currentLine !== '') {
+          paragraph += ' ' + currentLine;
         }
-
-        // Incluir la línea si:
-        // - No es una línea separadora
-        // - No es un código de documento
-        // - No es una nota al pie
-        if (!currentLine.includes('__________________') &&
-            !/^\d{2}-\d{5}/.test(currentLine)) {
-          
-          // Si la línea comienza con un inciso o es continuación, añadimos un espacio
-          if (/^[a-z]\)/.test(currentLine) || isLineContinuation(currentLine)) {
-            const lastChar = paragraph.slice(-1);
-            const needsSpace = lastChar !== ' ' && lastChar !== ';';
-            paragraph += (needsSpace ? ' ' : '') + currentLine;
-          } else {
-            // Para otras líneas, verificamos si parece ser parte del mismo párrafo
-            const lastChar = paragraph.slice(-1);
-            const firstChar = currentLine.charAt(0);
-            const needsSpace = lastChar !== ' ' && lastChar !== ';' && firstChar !== ',';
-            paragraph += (needsSpace ? ' ' : '') + currentLine;
-          }
-        }
-
-        lastLineWasFootnote = isFootnote;
       }
 
       // Limpiamos el texto del párrafo
-      paragraph = cleanText(paragraph)
+      paragraph = paragraph
         .replace(/^\d+\.\s+/, '') // Removemos el número del párrafo al inicio
-        .replace(/\s*\d+\s*(?=\n|$)/, '') // Removemos números sueltos al final (posibles notas al pie)
+        .replace(/\s+/g, ' ') // Normalizamos espacios
         .trim();
 
       return {
