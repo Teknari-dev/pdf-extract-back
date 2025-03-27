@@ -50,21 +50,44 @@ async function extractKeywords(text) {
     
     if (matches) {
       const extractedKeywords = matches.map(match => match.replace(/\*/g, '').trim());
+      
+      // Mostrar información de consumo de tokens
+      console.log('Consumo de tokens para el análisis:');
+      console.log('Tokens de entrada:', completion.usage.prompt_tokens);
+      console.log('Tokens de salida:', completion.usage.completion_tokens);
+      console.log('Total de tokens:', completion.usage.total_tokens);
+      console.log('----------------------------------------');
+      
       return {
         fullResponse: response,
-        keywords: extractedKeywords
+        keywords: extractedKeywords,
+        tokenUsage: {
+          prompt: completion.usage.prompt_tokens,
+          completion: completion.usage.completion_tokens,
+          total: completion.usage.total_tokens
+        }
       };
     }
     
     return {
       fullResponse: response,
-      keywords: []
+      keywords: [],
+      tokenUsage: {
+        prompt: completion.usage.prompt_tokens,
+        completion: completion.usage.completion_tokens,
+        total: completion.usage.total_tokens
+      }
     };
   } catch (error) {
     console.error('Error al extraer palabras clave:', error);
     return {
       fullResponse: 'Error al analizar el texto',
-      keywords: []
+      keywords: [],
+      tokenUsage: {
+        prompt: 0,
+        completion: 0,
+        total: 0
+      }
     };
   }
 }
@@ -210,9 +233,11 @@ app.post('/extract-from-edited', async (req, res) => {
     
     // Analizar cada párrafo con IA y obtener tanto el análisis completo como las palabras clave
     const paragraphsWithAnalysis = [];
+    let totalTokens = 0;
     
     for (const paragraph of extractedParagraphs) {
       const analysis = await extractKeywords(paragraph.text);
+      totalTokens += analysis.tokenUsage.total;
       paragraphsWithAnalysis.push({
         ...paragraph,
         aiAnalysis: analysis.fullResponse,
@@ -220,12 +245,23 @@ app.post('/extract-from-edited', async (req, res) => {
       });
     }
 
+    // Mostrar resumen de consumo de tokens
+    console.log('Resumen de consumo de tokens:');
+    console.log('Total de párrafos analizados:', paragraphsWithAnalysis.length);
+    console.log('Total de tokens consumidos:', totalTokens);
+    console.log('Promedio de tokens por párrafo:', Math.round(totalTokens / paragraphsWithAnalysis.length));
+    console.log('========================================');
+
     // Crear el índice de palabras clave
     const keywordIndex = createKeywordIndex(paragraphsWithAnalysis);
     
     res.json({ 
       extractedParagraphs: paragraphsWithAnalysis,
-      keywordIndex: keywordIndex
+      keywordIndex: keywordIndex,
+      tokenUsage: {
+        total: totalTokens,
+        averagePerParagraph: Math.round(totalTokens / paragraphsWithAnalysis.length)
+      }
     });
   } catch (error) {
     console.error('Error extracting paragraphs:', error);
@@ -251,9 +287,11 @@ app.post('/extract-all-paragraphs', async (req, res) => {
     const extractedParagraphs = extractParagraphsFromText(editedText, allParagraphNumbers);
     
     const paragraphsWithAnalysis = [];
+    let totalTokens = 0;
     
     for (const paragraph of extractedParagraphs) {
       const analysis = await extractKeywords(paragraph.text);
+      totalTokens += analysis.tokenUsage.total;
       paragraphsWithAnalysis.push({
         ...paragraph,
         aiAnalysis: analysis.fullResponse,
@@ -261,12 +299,23 @@ app.post('/extract-all-paragraphs', async (req, res) => {
       });
     }
 
+    // Mostrar resumen de consumo de tokens
+    console.log('Resumen de consumo de tokens:');
+    console.log('Total de párrafos analizados:', paragraphsWithAnalysis.length);
+    console.log('Total de tokens consumidos:', totalTokens);
+    console.log('Promedio de tokens por párrafo:', Math.round(totalTokens / paragraphsWithAnalysis.length));
+    console.log('========================================');
+
     // Crear el índice de palabras clave
     const keywordIndex = createKeywordIndex(paragraphsWithAnalysis);
     
     res.json({ 
       extractedParagraphs: paragraphsWithAnalysis,
-      keywordIndex: keywordIndex
+      keywordIndex: keywordIndex,
+      tokenUsage: {
+        total: totalTokens,
+        averagePerParagraph: Math.round(totalTokens / paragraphsWithAnalysis.length)
+      }
     });
   } catch (error) {
     console.error('Error extracting paragraphs:', error);
