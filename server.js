@@ -31,7 +31,7 @@ async function extractKeywords(text) {
       messages: [
         {
           "role": "system", 
-          "content": "Proporciona 15 palabras clave más importantes (solo una palabra clave). Piensa en detalle sobre el contenido y su significado. Asegúrate de poner SOLO las palabras clave entre asteriscos, por ejemplo: *palabra clave*. Las palabras clave deben estar separadas, cada una con sus propios asteriscos."
+          "content": "Extrae exactamente 15 palabras clave más importantes del texto proporcionado. Cada palabra clave debe ser una sola palabra. No uses guiones, comas ni caracteres adicionales para unir palabras clave. No repitas palabras clave dentro del mismo conjunto de 15. Asegúrate de que todas las palabras clave sean relevantes y tengan significado en el contexto del texto. Formatea las palabras clave poniendo cada una entre asteriscos, por ejemplo: *migración*, *derechos humanos*, *discriminación*."
         },
         {
           "role": "user", 
