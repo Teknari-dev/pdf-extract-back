@@ -17,17 +17,17 @@ app.use(express.json({ limit: '50mb' }));
 // Configuración de la API de OpenAI para DeepSeek
 const openai = new OpenAI({
   apiKey: process.env.NVIDIA_API_KEY,
-  baseURL: 'https://integrate.api.nvidia.com/v1',
+  baseURL: 'https://api.deepseek.com/v1',
 });
 
 // Almacenamiento en memoria para los datos (en producción usarías una base de datos)
 const pdfData = {};
 
-// Función modificada para extraer palabras clave usando DeepSeek R1
+// Función modificada para extraer palabras clave usando DeepSeek
 async function extractKeywords(text) {
   try {
     const completion = await openai.chat.completions.create({
-      model: "deepseek-ai/deepseek-r1",
+      model: "deepseek-chat",
       messages: [
         {
           "role": "system", 
